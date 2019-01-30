@@ -1,0 +1,12 @@
+aniso8601==4.1.0
+certifi==2018.11.29
+chardet==3.0.4
+dotenv==0.0.5
+future==0.17.1
+future-fstrings==0.4.5
+idna==2.8
+-e git+https://github.com/IMSGlobal/caliper-python.git@46f0dec962958cdc418c71f56baf3ece566a16ff#egg=imsglobal_caliper
+requests==2.21.0
+rfc3986==1.1.0
+tokenize-rt==2.1.0
+urllib3==1.24.1
