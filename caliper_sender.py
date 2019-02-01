@@ -45,13 +45,14 @@ def get_last_runtime(cron_job):
         last_runtime = last_run[0].strftime('%Y-%m-%d %H:%M:%S')
     except Exception, err:
         logger.error(err)
+        last_runtime = None
     return last_runtime
 
 def fetch_events(last_runtime):
     # Fetch all events since last runtime
-    try:
+    if last_runtime:
         cur.execute("SELECT * FROM useinfo WHERE useinfo.timestamp >= CAST('{}' AS TIMESTAMP);".format(last_runtime))
-    except:
+    else:
         cur.execute("SELECT * FROM useinfo")
 
     events = cur.fetchall()
