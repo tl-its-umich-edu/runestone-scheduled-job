@@ -3,6 +3,12 @@ import psycopg2
 import requests, json, sys, os, logging
 from datetime import datetime, date, time
 import os
+from dotenv import Dotenv
+import logging
+
+# Configuration is for OpenLRW, obtain bearer token
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+logger = logging.getLogger()
 
 print("Connect to database...")
 conn = psycopg2.connect(
@@ -49,6 +55,7 @@ def send_caliper_event():
 
     # Loop through events and send events to caliper
     for event in events:
+        # TODO: Check if any of the attributes are null
         user_id = event[2]
         evnt = event[3]
         act = event[4]
@@ -90,20 +97,34 @@ def send_caliper_event():
                     event_time)
 
 def caliper_sender(actor, organization, course, resource, time):
-    # TODO: lrw_server should come from environment variable
-    lrw_server = "http://lti.tools"
-    # TODO: Endpoint should probably also come from environment variable
-    lrw_endpoint = lrw_server + "/caliper/event?key=python-caliper"
+    dotenv = Dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+    os.environ.update(dotenv)
 
-    # TODO: token should come from enviornment variable
-    token = "python-caliper"
+    # Multiple LRW support: https://github.com/tl-its-umich-edu/python-caliper-tester
+    lrw_type = os.getenv('LRW_TYPE',"").lower()
+    token = os.getenv('TOKEN',"")
+    lrw_server = os.getenv('LRW_SERVER', "")
 
+    if lrw_type == 'unizin':
+        lrw_endpoint = lrw_server
+    elif lrw_type == 'ltitool':
+        lrw_endpoint = "{lrw_server}/caliper/event?key={token}".format(lrw_server = lrw_server, token = token)
+    elif lrw_type == 'openlrw':
+        lrw_access = "{lrw_server}/api/auth/login".format(lrw_server = lrw_server)
+        lrw_endpoint = "{lrw_server}/api/caliper".format(lrw_server = lrw_server)
+        auth_data = {'username':'a601fd34-9f86-49ad-81dd-2b83dbee522b', 'password':'e4dff262-1583-4974-8d21-bff043db34d5'}
+        r = requests.post("{lrw_access}".format(lrw_access = lrw_access), json = auth_data, headers={'X-Requested-With': 'XMLHttpRequest'})
+        token = r.json().get('token')
+    else:
+        sys.exit("LRW Type {lrw_type} not supported".format(lrw_type = lrw_type))
+    
     the_config = caliper.HttpOptions(
         host="{0}".format(lrw_endpoint),
         auth_scheme='Bearer',
-        api_key=token)
+        api_key=token,
+        debug=True)
 
-    the_sensor = caliper.build_sensor_from_config(
+    the_sensor = caliper.build_simple_sensor(
             sensor_id = "{0}/test_caliper".format(lrw_server),
             config_options = the_config )
 
@@ -120,10 +141,13 @@ def caliper_sender(actor, organization, course, resource, time):
     # entities; suppose for example, you'll be sending a number of events
     # that all have the same actor
 
-    ret = the_sensor.describe(the_event.actor)
-    the_sensor.send(the_event)
-    print("event sent!")
+    # the_sensor.send(the_event)
+    logger.info(dir(the_event))
+    logger.info(the_sensor.send(the_event))
 
+    logger.info (the_sensor.status_code)
+    logger.info (the_sensor.debug) 
+    print("event sent!")
 
 
 def update_runtime_table(): 
