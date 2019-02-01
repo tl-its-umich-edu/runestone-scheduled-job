@@ -17,28 +17,38 @@ def send_caliper_event():
         )
     cur = conn.cursor()
 
-    # TODO: create a runtime table, get the last runtime
+    # create a runtime table, get the last runtime
     try:
-        cur.execute("CREATE TABLE IF NOT EXISTS execute_time (runtime timestamp NOT NULL)")
-    # now = datetime.utcnow()
-    # event_time = now.strftime('%Y-%m-%d %H:%M:%S') + now.strftime('.%f')[:4] + 'Z'
-    # cur.execute("INSERT INTO runtime (runtime) VALUES (%s)" % (event_time))
+        cur.execute("CREATE TABLE IF NOT EXISTS execute_time (runtime timestamp NOT NULL, status varchar(10) NOT NULL);")
+        now = datetime.utcnow()
+        event_time = now.strftime('%Y-%m-%d %H:%M:%S')
+        cur.execute("INSERT INTO execute_time (runtime, status) VALUES ('{}', 'completed');".format(event_time))
+        conn.commit()
     except Exception, err:
         print(err)
     
-    d = date(2019, 1, 18)
-    t = time(14, 30)
-    test_time = datetime.combine(d, t)
+    
+    # d = date(2019, 1, 18)
+    # t = time(14, 30)
+    # test_time = datetime.combine(d, t)
 
-    # get date from database after certain runtime
+    # get last execute time from database
     try:
-        cur.execute("SELECT * FROM useinfo WHERE useinfo.timestamp >= CAST('{}' AS TIMESTAMP);".format(test_time))
+        cur.execute("SELECT runtime FROM execute_time ORDER BY runtime DESC LIMIT 1;")
+        last_run = cur.fetchone()
+        last_runtime = last_run[0].strftime('%Y-%m-%d %H:%M:%S')
+        print("last runtime: ", last_runtime)
+    except Exception, err:
+        print(err)
+
+    try:
+        cur.execute("SELECT * FROM useinfo WHERE useinfo.timestamp >= CAST('{}' AS TIMESTAMP);".format(last_runtime))
         events = cur.fetchall()
-        print(events[0]) # tuple (43, datetime.datetime(2019, 1, 18, 14, 44, 17), 'chuyao', 'page', 'view', '/runestone/static/thinkcspy/GeneralIntro/toctree.html', 'thinkcspy')
+        print("Fetched {} events".format(len(events))) 
     except Exception, err:   
         print(err)
 
-    # TODO: loop through events and send events to caliper
+    # loop through events and send events to caliper
     for event in events:
         user_id = event[2]
         evnt = event[3]
@@ -72,7 +82,6 @@ def send_caliper_event():
         organization = caliper.entities.Organization(id="test_org")
         edApp = caliper.entities.SoftwareApplication(id=course)
 
-        
         caliper_sender(
                     actor, 
                     organization, 
