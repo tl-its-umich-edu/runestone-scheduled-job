@@ -1,46 +1,45 @@
 import caliper
 import psycopg2
-# from dotenv import load_dotenv
 import requests, json, sys, os, logging
 from datetime import datetime, date, time
-
 import os
 
-# load_dotenv()
+print("Connect to database...")
+conn = psycopg2.connect(
+    dbname = "runestone",
+    user = os.getenv("USER"),
+    password = os.getenv("PASSWORD")
+    )
+cur = conn.cursor()
+
+def create_runtime_table():
+    """
+    Create cron_run_info table if not exists
+    """
+    try:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS cron_run_info 
+            (cron_job varchar(64) NOT NULL UNIQUE,
+            last_run_time timestamp NOT NULL, 
+            last_run_status varchar(255) NOT NULL);""")
+    except Exception, err:
+        print(err)
+
+create_runtime_table()
 
 def send_caliper_event():
-    print("Connect to database...")
-    conn = psycopg2.connect(
-        dbname = "runestone",
-        user = os.getenv("USER"),
-        password = os.getenv("PASSWORD")
-        )
-    cur = conn.cursor()
-
-    # create a runtime table, get the last runtime
-    try:
-        cur.execute("CREATE TABLE IF NOT EXISTS execute_time (runtime timestamp NOT NULL, status varchar(10) NOT NULL);")
-        now = datetime.utcnow()
-        event_time = now.strftime('%Y-%m-%d %H:%M:%S')
-        cur.execute("INSERT INTO execute_time (runtime, status) VALUES ('{}', 'completed');".format(event_time))
-        conn.commit()
-    except Exception, err:
-        print(err)
     
+    cron_job = 'test_cron'
     
-    # d = date(2019, 1, 18)
-    # t = time(14, 30)
-    # test_time = datetime.combine(d, t)
-
-    # get last execute time from database
+    # Get last run time from database
     try:
-        cur.execute("SELECT runtime FROM execute_time ORDER BY runtime DESC LIMIT 1;")
+        cur.execute("SELECT last_run_time FROM cron_run_info WHERE cron_job = '{}' ".format(cron_job))
         last_run = cur.fetchone()
         last_runtime = last_run[0].strftime('%Y-%m-%d %H:%M:%S')
-        print("last runtime: ", last_runtime)
     except Exception, err:
         print(err)
 
+    # Fetch all events since last runtime
     try:
         cur.execute("SELECT * FROM useinfo WHERE useinfo.timestamp >= CAST('{}' AS TIMESTAMP);".format(last_runtime))
         events = cur.fetchall()
@@ -48,7 +47,7 @@ def send_caliper_event():
     except Exception, err:   
         print(err)
 
-    # loop through events and send events to caliper
+    # Loop through events and send events to caliper
     for event in events:
         user_id = event[2]
         evnt = event[3]
@@ -60,10 +59,11 @@ def send_caliper_event():
         document = nav_path[3]
         chapter_path = '/'.join(nav_path[:5]) + '/'
         chapter = nav_path[4]
+        event_time = event[1]
         try:
             page = nav_path[5]
         except:
-            page = "NULL"
+            page = ""
 
         resource = caliper.entities.Page(
                         id = '/'.join(nav_path),
@@ -87,7 +87,7 @@ def send_caliper_event():
                     organization, 
                     edApp, 
                     resource,
-                    test_time)
+                    event_time)
 
 def caliper_sender(actor, organization, course, resource, time):
     # TODO: lrw_server should come from environment variable
@@ -124,4 +124,23 @@ def caliper_sender(actor, organization, course, resource, time):
     the_sensor.send(the_event)
     print("event sent!")
 
+
+
+def update_runtime_table(): 
+    # Insert now into the runtime table after sending event
+    now = datetime.utcnow()
+    event_time = now.strftime('%Y-%m-%d %H:%M:%S')
+    cur.execute("""
+    INSERT INTO cron_run_info (cron_job, last_run_time, last_run_status) 
+    VALUES ('{cron_job}', '{last_run_time}', '{last_run_status}')
+    ON CONFLICT (cron_job) DO UPDATE SET 
+    	last_run_time = EXCLUDED.last_run_time,
+        last_run_status = EXCLUDED.last_run_status;
+    """.format(
+        cron_job = 'test_cron', 
+        last_run_time = event_time, 
+        last_run_status = 'test_status'))
+    conn.commit()
+
 send_caliper_event()
+update_runtime_table()
