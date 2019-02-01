@@ -10,7 +10,7 @@ import logging
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger()
 
-print("Connect to database...")
+logger.info("Connect to database...")
 conn = psycopg2.connect(
     dbname = "runestone",
     user = os.getenv("USER"),
@@ -25,7 +25,8 @@ def create_runtime_table():
     try:
         cur.execute("""
         CREATE TABLE IF NOT EXISTS cron_run_info 
-            (cron_job varchar(64) NOT NULL UNIQUE,
+            (id SERIAL PRIMARY KEY,
+            cron_job varchar(64) NOT NULL,
             last_run_time timestamp NOT NULL, 
             last_run_status varchar(255) NOT NULL);""")
     except Exception, err:
@@ -33,40 +34,82 @@ def create_runtime_table():
 
 create_runtime_table()
 
-def send_caliper_event():
-    
-    cron_job = 'test_cron'
-    
+def get_last_runtime(cron_job):
     # Get last run time from database
     try:
-        cur.execute("SELECT last_run_time FROM cron_run_info WHERE cron_job = '{}' ".format(cron_job))
+        cur.execute("""
+        SELECT last_run_time FROM cron_run_info 
+        WHERE cron_job = '{}'
+        ORDER BY last_run_time DESC LIMIT 1 """.format(cron_job))
         last_run = cur.fetchone()
         last_runtime = last_run[0].strftime('%Y-%m-%d %H:%M:%S')
     except Exception, err:
-        print(err)
+        logger.error(err)
+    return last_runtime
 
+def fetch_events(last_runtime):
     # Fetch all events since last runtime
     try:
         cur.execute("SELECT * FROM useinfo WHERE useinfo.timestamp >= CAST('{}' AS TIMESTAMP);".format(last_runtime))
-        events = cur.fetchall()
-        print("Fetched {} events".format(len(events))) 
-    except Exception, err:   
-        print(err)
+    except:
+        cur.execute("SELECT * FROM useinfo")
+
+    events = cur.fetchall()
+    logger.info("Fetched {} events".format(len(events)))
+    return events
+
+def send_caliper_event():
+    
+    cron_job = 'test_cron'
+    last_runtime = get_last_runtime(cron_job)
+    events = fetch_events(last_runtime)
 
     # Loop through events and send events to caliper
     for event in events:
-        # TODO: Check if any of the attributes are null
-        user_id = event[2]
-        evnt = event[3]
-        act = event[4]
-        course = event[6]
-        nav_path = event[5].split('/')
+        try:
+            user_id = event[2]
+        except: # if no user_id
+            continue
 
-        document_path = '/'.join(nav_path[:4]) + '/'
-        document = nav_path[3]
-        chapter_path = '/'.join(nav_path[:5]) + '/'
-        chapter = nav_path[4]
-        event_time = event[1]
+        try:
+            evnt = event[3]
+        except:
+            evnt = ""
+
+        try:
+            act = event[4]
+        except:
+            act = ""
+
+        try:
+            course = event[6]
+        except:
+            continue
+
+        try:
+            nav_path = event[5].split('/')
+        except:
+            continue
+
+        try:
+            event_time = event[1]
+        except:
+            continue
+
+        try:
+            document = nav_path[3]
+            document_path = '/'.join(nav_path[:4]) + '/'
+        except:
+            document = ""
+            document_path = ""
+
+        try:
+            chapter = nav_path[4]
+            chapter_path = '/'.join(nav_path[:5]) + '/'
+        except:
+            chapter = ""
+            chapter_path = ""
+
         try:
             page = nav_path[5]
         except:
@@ -109,12 +152,6 @@ def caliper_sender(actor, organization, course, resource, time):
         lrw_endpoint = lrw_server
     elif lrw_type == 'ltitool':
         lrw_endpoint = "{lrw_server}/caliper/event?key={token}".format(lrw_server = lrw_server, token = token)
-    elif lrw_type == 'openlrw':
-        lrw_access = "{lrw_server}/api/auth/login".format(lrw_server = lrw_server)
-        lrw_endpoint = "{lrw_server}/api/caliper".format(lrw_server = lrw_server)
-        auth_data = {'username':'a601fd34-9f86-49ad-81dd-2b83dbee522b', 'password':'e4dff262-1583-4974-8d21-bff043db34d5'}
-        r = requests.post("{lrw_access}".format(lrw_access = lrw_access), json = auth_data, headers={'X-Requested-With': 'XMLHttpRequest'})
-        token = r.json().get('token')
     else:
         sys.exit("LRW Type {lrw_type} not supported".format(lrw_type = lrw_type))
     
@@ -147,7 +184,7 @@ def caliper_sender(actor, organization, course, resource, time):
 
     logger.info (the_sensor.status_code)
     logger.info (the_sensor.debug) 
-    print("event sent!")
+    logger.info("event sent!")
 
 
 def update_runtime_table(): 
@@ -156,13 +193,10 @@ def update_runtime_table():
     event_time = now.strftime('%Y-%m-%d %H:%M:%S')
     cur.execute("""
     INSERT INTO cron_run_info (cron_job, last_run_time, last_run_status) 
-    VALUES ('{cron_job}', '{last_run_time}', '{last_run_status}')
-    ON CONFLICT (cron_job) DO UPDATE SET 
-    	last_run_time = EXCLUDED.last_run_time,
-        last_run_status = EXCLUDED.last_run_status;
+    VALUES ('{cron_job}', '{last_run_time}', '{last_run_status}');
     """.format(
         cron_job = 'test_cron', 
-        last_run_time = event_time, 
+        last_run_time = event_time,  
         last_run_status = 'test_status'))
     conn.commit()
 
