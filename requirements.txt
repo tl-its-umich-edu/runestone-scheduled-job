@@ -5,7 +5,8 @@ dotenv==0.0.5
 future==0.17.1
 future-fstrings==0.4.5
 idna==2.8
--e git+https://github.com/IMSGlobal/caliper-python.git@46f0dec962958cdc418c71f56baf3ece566a16ff#egg=imsglobal_caliper
+-e git+https://github.com/IMSGlobal/caliper-python.git@0a43809e244bb86c2370b08c3db5634dbbd28cac#egg=imsglobal_caliper
+psycopg2==2.7.7
 requests==2.21.0
 rfc3986==1.1.0
 tokenize-rt==2.1.0
