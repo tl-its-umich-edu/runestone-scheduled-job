@@ -76,80 +76,41 @@ def send_caliper_event():
     last_runtime = get_last_runtime(cron_job)
     events = fetch_events(last_runtime)
 
+    print (events)
     # Loop through events and send events to caliper
     for event in events:
-        try:
-            user_id = event[2]
-        except: # if no user_id
-            continue
-
-        try:
-            evnt = event[3]
-        except:
-            evnt = ""
-
-        try:
-            act = event[4]
-        except:
-            act = ""
-
-        try:
-            course = event[6]
-        except:
-            continue
-
-        try:
-            nav_path = event[5].split('/')
-        except:
-            continue
-
-        try:
-            event_time = event[1]
-        except:
-            continue
-
-        try:
-            document = nav_path[3]
+        print (event)
+        nav_path = document_path = chapter_path = page = ""
+        if event.get('div_id'):
+            nav_path = event.get('div_id').split('/')
             document_path = '/'.join(nav_path[:4]) + '/'
-        except:
-            document = ""
-            document_path = ""
-
-        try:
-            chapter = nav_path[4]
             chapter_path = '/'.join(nav_path[:5]) + '/'
-        except:
-            chapter = ""
-            chapter_path = ""
-
-        try:
-            page = nav_path[5]
-        except:
-            page = ""
+            if (len(nav_path) == 4):
+                page = nav_path[5]
 
         resource = caliper.entities.Page(
                         id = '/'.join(nav_path),
                         name = page,
                         isPartOf = caliper.entities.Chapter(
                             id = chapter_path,
-                            name = chapter,
+                            name = event.get('chapter'),
                             isPartOf = caliper.entities.Document(
                                 id = document_path,
-                                name = document,
+                                name = event.get('document'),
                             )
                         )
                     )
 
-        actor = caliper.entities.Person(id=user_id)
+        actor = caliper.entities.Person(id=event.get('sid'))
         organization = caliper.entities.Organization(id="test_org")
-        edApp = caliper.entities.SoftwareApplication(id=course)
+        edApp = caliper.entities.SoftwareApplication(id=event.get('course_id'))
 
         caliper_sender(
                     actor, 
                     organization, 
                     edApp, 
                     resource,
-                    event_time)
+                    event.get('timestamp'))
 
 def caliper_sender(actor, organization, course, resource, time):
     # Multiple LRW support: https://github.com/tl-its-umich-edu/python-caliper-tester
