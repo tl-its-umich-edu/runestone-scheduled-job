@@ -1,22 +1,33 @@
 import caliper
 import psycopg2
+import psycopg2.extras
+
 import requests, json, sys, os, logging
 from datetime import datetime, date, time
 import os
-from dotenv import Dotenv
+from dotenv import load_dotenv
 import logging
 
 # Configuration is for OpenLRW, obtain bearer token
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger()
 
+this_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, this_dir + "/..")
+
+dotenv = load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+
 logger.info("Connect to database...")
 conn = psycopg2.connect(
-    dbname = "runestone",
-    user = os.getenv("USER"),
-    password = os.getenv("PASSWORD")
+    dbname = os.getenv("DB_NAME", "runestone"),
+    user = os.getenv("DB_USER", "runestone"),
+    password = os.getenv("DB_PASS", "runestone"),
+    host = os.getenv("DB_HOST", "localhost"),
+    port = os.getenv("DB_PORT", 5432),
     )
-cur = conn.cursor()
+
+cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
 
 def create_runtime_table():
     """
@@ -29,7 +40,7 @@ def create_runtime_table():
             cron_job varchar(64) NOT NULL,
             last_run_time timestamp NOT NULL, 
             last_run_status varchar(255) NOT NULL);""")
-    except Exception, err:
+    except Exception as err:
         print(err)
 
 create_runtime_table()
@@ -43,7 +54,7 @@ def get_last_runtime(cron_job):
         ORDER BY last_run_time DESC LIMIT 1 """.format(cron_job))
         last_run = cur.fetchone()
         last_runtime = last_run[0].strftime('%Y-%m-%d %H:%M:%S')
-    except Exception, err:
+    except Exception as err:
         logger.error(err)
         last_runtime = None
     return last_runtime
@@ -141,12 +152,9 @@ def send_caliper_event():
                     event_time)
 
 def caliper_sender(actor, organization, course, resource, time):
-    dotenv = Dotenv(os.path.join(os.path.dirname(__file__), ".env"))
-    os.environ.update(dotenv)
-
     # Multiple LRW support: https://github.com/tl-its-umich-edu/python-caliper-tester
     lrw_type = os.getenv('LRW_TYPE',"").lower()
-    token = os.getenv('TOKEN',"")
+    token = os.getenv('LRW_TOKEN',"")
     lrw_server = os.getenv('LRW_SERVER', "")
 
     if lrw_type == 'unizin':
