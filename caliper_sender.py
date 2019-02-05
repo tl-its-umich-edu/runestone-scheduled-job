@@ -1,22 +1,33 @@
 import caliper
 import psycopg2
+import psycopg2.extras
+
 import requests, json, sys, os, logging
 from datetime import datetime, date, time
 import os
-from dotenv import Dotenv
+from dotenv import load_dotenv
 import logging
 
 # Configuration is for OpenLRW, obtain bearer token
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger()
 
+this_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, this_dir + "/..")
+
+dotenv = load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+
 logger.info("Connect to database...")
 conn = psycopg2.connect(
-    dbname = "runestone",
-    user = os.getenv("USER"),
-    password = os.getenv("PASSWORD")
+    dbname = os.getenv("DB_NAME", "runestone"),
+    user = os.getenv("DB_USER", "runestone"),
+    password = os.getenv("DB_PASS", "runestone"),
+    host = os.getenv("DB_HOST", "localhost"),
+    port = os.getenv("DB_PORT", 5432),
     )
-cur = conn.cursor()
+
+cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
 
 def create_runtime_table():
     """
@@ -29,7 +40,7 @@ def create_runtime_table():
             cron_job varchar(64) NOT NULL,
             last_run_time timestamp NOT NULL, 
             last_run_status varchar(255) NOT NULL);""")
-    except Exception, err:
+    except Exception as err:
         print(err)
 
 create_runtime_table()
@@ -43,7 +54,7 @@ def get_last_runtime(cron_job):
         ORDER BY last_run_time DESC LIMIT 1 """.format(cron_job))
         last_run = cur.fetchone()
         last_runtime = last_run[0].strftime('%Y-%m-%d %H:%M:%S')
-    except Exception, err:
+    except Exception as err:
         logger.error(err)
         last_runtime = None
     return last_runtime
@@ -65,88 +76,46 @@ def send_caliper_event():
     last_runtime = get_last_runtime(cron_job)
     events = fetch_events(last_runtime)
 
+    print (events)
     # Loop through events and send events to caliper
     for event in events:
-        try:
-            user_id = event[2]
-        except: # if no user_id
-            continue
-
-        try:
-            evnt = event[3]
-        except:
-            evnt = ""
-
-        try:
-            act = event[4]
-        except:
-            act = ""
-
-        try:
-            course = event[6]
-        except:
-            continue
-
-        try:
-            nav_path = event[5].split('/')
-        except:
-            continue
-
-        try:
-            event_time = event[1]
-        except:
-            continue
-
-        try:
-            document = nav_path[3]
+        print (event)
+        nav_path = document_path = chapter_path = page = ""
+        if event.get('div_id'):
+            nav_path = event.get('div_id').split('/')
             document_path = '/'.join(nav_path[:4]) + '/'
-        except:
-            document = ""
-            document_path = ""
-
-        try:
-            chapter = nav_path[4]
             chapter_path = '/'.join(nav_path[:5]) + '/'
-        except:
-            chapter = ""
-            chapter_path = ""
-
-        try:
-            page = nav_path[5]
-        except:
-            page = ""
+            if (len(nav_path) == 4):
+                page = nav_path[5]
 
         resource = caliper.entities.Page(
                         id = '/'.join(nav_path),
                         name = page,
                         isPartOf = caliper.entities.Chapter(
                             id = chapter_path,
-                            name = chapter,
+                            name = event.get('chapter'),
                             isPartOf = caliper.entities.Document(
                                 id = document_path,
-                                name = document,
+                                name = event.get('document'),
                             )
                         )
                     )
 
-        actor = caliper.entities.Person(id=user_id)
+        actor = caliper.entities.Person(id=event.get('sid'))
         organization = caliper.entities.Organization(id="test_org")
-        edApp = caliper.entities.SoftwareApplication(id=course)
+        edApp = caliper.entities.SoftwareApplication(id=event.get('course_id'))
 
         caliper_sender(
                     actor, 
                     organization, 
                     edApp, 
                     resource,
-                    event_time)
+                    event.get('timestamp'))
 
 def caliper_sender(actor, organization, course, resource, time):
-    dotenv = Dotenv(os.path.join(os.path.dirname(__file__), ".env"))
-    os.environ.update(dotenv)
-
     # Multiple LRW support: https://github.com/tl-its-umich-edu/python-caliper-tester
     lrw_type = os.getenv('LRW_TYPE',"").lower()
-    token = os.getenv('TOKEN',"")
+    token = os.getenv('LRW_TOKEN',"")
     lrw_server = os.getenv('LRW_SERVER', "")
 
     if lrw_type == 'unizin':
