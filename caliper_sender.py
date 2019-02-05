@@ -76,7 +76,8 @@ def send_caliper_event():
     last_runtime = get_last_runtime(cron_job)
     events = fetch_events(last_runtime)
     batch = []
-    print (events)
+    batch_size = 5
+    # print (events)
     # Loop through events and send events to caliper
     for event in events:
         nav_path = document_path = chapter_path = page = ""
@@ -112,55 +113,14 @@ def send_caliper_event():
             eventTime = event.get('timestamp').isoformat(),
             action = "NavigatedTo"
             )
-
+        
         batch.append(the_event)
-    print (batch)
-
-    send_event_batch(batch)
-
-def caliper_sender(actor, organization, course, resource, time):
-    # Multiple LRW support: https://github.com/tl-its-umich-edu/python-caliper-tester
-    lrw_type = os.getenv('LRW_TYPE',"").lower()
-    token = os.getenv('LRW_TOKEN',"")
-    lrw_server = os.getenv('LRW_SERVER', "")
-
-    if lrw_type == 'unizin':
-        lrw_endpoint = lrw_server
-    elif lrw_type == 'ltitool':
-        lrw_endpoint = "{lrw_server}/caliper/event?key={token}".format(lrw_server = lrw_server, token = token)
-    else:
-        sys.exit("LRW Type {lrw_type} not supported".format(lrw_type = lrw_type))
-    
-    the_config = caliper.HttpOptions(
-        host="{0}".format(lrw_endpoint),
-        auth_scheme='Bearer',
-        api_key=token,
-        debug=True)
-
-    the_sensor = caliper.build_simple_sensor(
-            sensor_id = "{0}/test_caliper".format(lrw_server),
-            config_options = the_config )
-
-    the_event = caliper.events.NavigationEvent(
-            actor = actor,
-            edApp = course,
-            group = organization,
-            object = resource,
-            eventTime = time.isoformat(),
-            action = "NavigatedTo"
-            )
-
-    # Once built, you can use your sensor to describe one or more often used
-    # entities; suppose for example, you'll be sending a number of events
-    # that all have the same actor
-
-    # the_sensor.send(the_event)
-    logger.info(dir(the_event))
-    logger.info(the_sensor.send(the_event))
-
-    logger.info (the_sensor.status_code)
-    logger.info (the_sensor.debug) 
-    logger.info("event sent!")
+        if len(batch) == batch_size:
+            send_event_batch(batch)
+            batch = []
+            
+    if len(batch) != 0:
+        send_event_batch(batch)
 
 def send_event_batch(batch):
     # Multiple LRW support: https://github.com/tl-its-umich-edu/python-caliper-tester
@@ -184,7 +144,8 @@ def send_event_batch(batch):
     the_sensor = caliper.build_simple_sensor(
             sensor_id = "{0}/test_caliper".format(lrw_server),
             config_options = the_config )
-
+    
+    logger.info("Sending {} events".format(len(batch)))
     the_sensor.send(batch)
 
     # logger.info(the_sensor.send(batch))
