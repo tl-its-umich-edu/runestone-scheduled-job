@@ -76,7 +76,8 @@ def send_caliper_event():
     last_runtime = get_last_runtime(cron_job)
     events = fetch_events(last_runtime)
     batch = []
-    batch_size = 5
+
+    batch_size = os.getenv("BATCH_SIZE", 5)
     # print (events)
     # Loop through events and send events to caliper
     for event in events:
