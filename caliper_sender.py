@@ -86,7 +86,6 @@ def send_caliper_event():
     event_types = ['page']
     act_types = ['view']
     batch = []
-
     batch_size = os.getenv("BATCH_SIZE", 5)
 
     events = fetch_events(last_runtime, event_types, act_types)
