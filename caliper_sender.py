@@ -84,11 +84,9 @@ def send_caliper_event():
     cron_job = 'test_cron'
     last_runtime = get_last_runtime(cron_job)
     event_types = ['page']
-    act_types = ['view', 'reset']
+    act_types = ['view']
     batch = []
-
     batch_size = os.getenv("BATCH_SIZE", 5)
-    batch_size = 5
 
     events = fetch_events(last_runtime, event_types, act_types)
     # print (events)
