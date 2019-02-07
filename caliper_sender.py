@@ -75,11 +75,11 @@ def send_caliper_event():
     cron_job = 'test_cron'
     last_runtime = get_last_runtime(cron_job)
     events = fetch_events(last_runtime)
-
-    print (events)
+    batch = []
+    batch_size = os.getenv("BATCH_SIZE", 5)
+    # print (events)
     # Loop through events and send events to caliper
     for event in events:
-        print (event)
         nav_path = document_path = chapter_path = page = ""
         if event.get('div_id'):
             nav_path = event.get('div_id').split('/')
@@ -105,14 +105,24 @@ def send_caliper_event():
         organization = caliper.entities.Organization(id="test_org")
         edApp = caliper.entities.SoftwareApplication(id=event.get('course_id'))
 
-        caliper_sender(
-                    actor, 
-                    organization, 
-                    edApp, 
-                    resource,
-                    event.get('timestamp'))
+        the_event = caliper.events.NavigationEvent(
+            actor = actor,
+            edApp = edApp,
+            group = organization,
+            object = resource,
+            eventTime = event.get('timestamp').isoformat(),
+            action = "NavigatedTo"
+            )
+        
+        batch.append(the_event)
+        if len(batch) == batch_size:
+            send_event_batch(batch)
+            batch = []
+            
+    if len(batch) != 0:
+        send_event_batch(batch)
 
-def caliper_sender(actor, organization, course, resource, time):
+def send_event_batch(batch):
     # Multiple LRW support: https://github.com/tl-its-umich-edu/python-caliper-tester
     lrw_type = os.getenv('LRW_TYPE',"").lower()
     token = os.getenv('LRW_TOKEN',"")
@@ -134,24 +144,11 @@ def caliper_sender(actor, organization, course, resource, time):
     the_sensor = caliper.build_simple_sensor(
             sensor_id = "{0}/test_caliper".format(lrw_server),
             config_options = the_config )
+    
+    logger.info("Sending {} events".format(len(batch)))
+    the_sensor.send(batch)
 
-    the_event = caliper.events.NavigationEvent(
-            actor = actor,
-            edApp = course,
-            group = organization,
-            object = resource,
-            eventTime = time.isoformat(),
-            action = "NavigatedTo"
-            )
-
-    # Once built, you can use your sensor to describe one or more often used
-    # entities; suppose for example, you'll be sending a number of events
-    # that all have the same actor
-
-    # the_sensor.send(the_event)
-    logger.info(dir(the_event))
-    logger.info(the_sensor.send(the_event))
-
+    # logger.info(the_sensor.send(batch))
     logger.info (the_sensor.status_code)
     logger.info (the_sensor.debug) 
     logger.info("event sent!")
