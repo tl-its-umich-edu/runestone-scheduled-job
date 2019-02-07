@@ -114,7 +114,7 @@ def send_caliper_event():
                     )
 
         actor = caliper.entities.Person(id=event.get('sid'))
-        organization = caliper.entities.Organization(id="test_org")
+        organization = caliper.entities.Organization(id=os.getenv("ORGANIZATION", "Umich"))
         edApp = caliper.entities.SoftwareApplication(id=event.get('course_id'))
 
         the_event = caliper.events.NavigationEvent(
@@ -154,7 +154,7 @@ def send_event_batch(batch):
         debug=True)
 
     the_sensor = caliper.build_simple_sensor(
-            sensor_id = "{0}/test_caliper".format(lrw_server),
+            sensor_id = os.getenv("SENSOR_ID", "{0}/test_caliper".format(lrw_server)),
             config_options = the_config )
     
     logger.info("Sending {} events".format(len(batch)))
