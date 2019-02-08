@@ -92,47 +92,53 @@ def send_caliper_event():
     # print (events)
     # Loop through events and send events to caliper
     for event in events:
-        nav_path = document_path = chapter_path = page = ""
-        if event.get('div_id'):
-            nav_path = event.get('div_id').split('/')
-            document_path = '/'.join(nav_path[:4]) + '/'
-            chapter_path = '/'.join(nav_path[:5]) + '/'
-            if (len(nav_path) == 4):
-                page = nav_path[5]
-
-        resource = caliper.entities.Page(
-                        id = '/'.join(nav_path),
-                        name = page,
-                        isPartOf = caliper.entities.Chapter(
-                            id = chapter_path,
-                            name = event.get('chapter'),
-                            isPartOf = caliper.entities.Document(
-                                id = document_path,
-                                name = event.get('document'),
-                            )
-                        )
-                    )
-
-        actor = caliper.entities.Person(id=event.get('sid'))
-        organization = caliper.entities.Organization(id=os.getenv("ORGANIZATION", "Umich"))
-        edApp = caliper.entities.SoftwareApplication(id=event.get('course_id'))
-
-        the_event = caliper.events.NavigationEvent(
-            actor = actor,
-            edApp = edApp,
-            group = organization,
-            object = resource,
-            eventTime = event.get('timestamp').isoformat(),
-            action = "NavigatedTo"
-            )
-        
-        batch.append(the_event)
+        if event.get('event'):
+            if event.get('event') == 'page':
+                caliper_event = caliper_page_event(event)
+            batch.append(caliper_event)
+            
         if len(batch) == batch_size:
             send_event_batch(batch)
             batch = []
             
     if len(batch) != 0:
         send_event_batch(batch)
+
+def caliper_page_event(event):
+    nav_path = document_path = chapter_path = page = ""
+    if event.get('div_id'):
+        nav_path = event.get('div_id').split('/')
+        document_path = '/'.join(nav_path[:4]) + '/'
+        chapter_path = '/'.join(nav_path[:5]) + '/'
+        if (len(nav_path) == 4):
+            page = nav_path[5]
+
+    resource = caliper.entities.Page(
+                    id = '/'.join(nav_path),
+                    name = page,
+                    isPartOf = caliper.entities.Chapter(
+                        id = chapter_path,
+                        name = event.get('chapter'),
+                        isPartOf = caliper.entities.Document(
+                            id = document_path,
+                            name = event.get('document'),
+                        )
+                    )
+                )
+
+    actor = caliper.entities.Person(id=event.get('sid'))
+    organization = caliper.entities.Organization(id=os.getenv("ORGANIZATION", "Umich"))
+    edApp = caliper.entities.SoftwareApplication(id=event.get('course_id'))
+
+    the_event = caliper.events.NavigationEvent(
+        actor = actor,
+        edApp = edApp,
+        group = organization,
+        object = resource,
+        eventTime = event.get('timestamp').isoformat(),
+        action = "NavigatedTo"
+        )
+    return the_event
 
 def send_event_batch(batch):
     # Multiple LRW support: https://github.com/tl-its-umich-edu/python-caliper-tester
