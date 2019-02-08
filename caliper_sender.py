@@ -46,25 +46,34 @@ def create_runtime_table():
 create_runtime_table()
 
 def get_last_runtime(cron_job):
-    # Get last run time from database
+    # Get last runtime
     try:
         cur.execute("""
         SELECT last_run_time FROM cron_run_info 
         WHERE cron_job = '{}'
         ORDER BY last_run_time DESC LIMIT 1 """.format(cron_job))
         last_run = cur.fetchone()
-        last_runtime = last_run[0].strftime('%Y-%m-%d %H:%M:%S')
+        if last_run:
+            last_runtime = last_run[0].strftime('%Y-%m-%d %H:%M:%S')
+        else: 
+            # When there's no previous data in cron_run_info table, get a default timestamp from environment
+            last_runtime = os.getenv("FIRST_RUNTIME", '2019-02-01T19:53:23').replace('T', ' ')
+
     except Exception as err:
         logger.error(err)
         last_runtime = None
     return last_runtime
 
-def fetch_events(last_runtime):
+def fetch_events(last_runtime, events, acts):
     # Fetch all events since last runtime
-    if last_runtime:
-        cur.execute("SELECT * FROM useinfo WHERE useinfo.timestamp >= CAST('{}' AS TIMESTAMP);".format(last_runtime))
-    else:
-        cur.execute("SELECT * FROM useinfo")
+    events = ["'" + event + "'" for event in events]
+    acts = ["'" + act + "'" for act in acts]
+
+    cur.execute("""
+    SELECT * FROM useinfo 
+    WHERE useinfo.event IN ({events})
+        AND useinfo.act IN ({acts})
+        AND useinfo.timestamp >= CAST('{last_runtime}' AS TIMESTAMP);""".format(events = ', '.join(events), acts = ', '.join(acts), last_runtime = last_runtime))
 
     events = cur.fetchall()
     logger.info("Fetched {} events".format(len(events)))
@@ -74,10 +83,13 @@ def send_caliper_event():
     
     cron_job = 'test_cron'
     last_runtime = get_last_runtime(cron_job)
-    events = fetch_events(last_runtime)
+    event_types = ['page']
+    act_types = ['view']
     batch = []
 
     batch_size = os.getenv("BATCH_SIZE", 5)
+
+    events = fetch_events(last_runtime, event_types, act_types)
     # print (events)
     # Loop through events and send events to caliper
     for event in events:
