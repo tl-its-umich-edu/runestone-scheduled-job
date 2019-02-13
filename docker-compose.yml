@@ -1,0 +1,21 @@
+version: '3'
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+      - DB_HOST=docker.for.mac.host.internal
+      - DB_PORT=5432
+      - LRW_TYPE=${LRW_TYPE}
+      - LRW_TOKEN=${LRW_TOKEN}
+      - LRW_SERVER=${LRW_SERVER}
+      - FIRST_RUNTIME = ${FIRST_RUNTIME}
+      - SENSOR_ID = ${LRW_SERVER}/test_caliper
+      - ORGANIZATION = ${ORGANIZATION}
+      - CRONTAB_SCHEDULE = ${CRONTAB_SCHEDULE}
