@@ -7,6 +7,11 @@ COPY caliper_sender.py /caliper_sender.py
 # COPY startup script into known file location in container
 COPY start.sh /start.sh
 
+# apt-utils needs to be installed separately
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3-dev xmlsec1 cron && \
+    apt-get clean -y
+
 RUN pip install -r requirements.txt
 
 # Get caliper

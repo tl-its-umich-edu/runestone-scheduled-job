@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 env
 if [ -z "${CRONTAB_SCHEDULE}" ]; then
     echo "CRONTAB_SCHEDULE environment variable not set, crontab cannot be started. Please set this to a crontab acceptable format. Just running command."
