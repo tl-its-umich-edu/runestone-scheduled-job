@@ -94,7 +94,7 @@ def send_caliper_event():
     for event in events:
         if event.get('event'):
             if event.get('event') == 'page':
-                caliper_event = caliper_page_event(event)
+                caliper_event = get_caliper_event(event, "ViewEvent")
             batch.append(caliper_event)
             
         if len(batch) == batch_size:
@@ -104,7 +104,7 @@ def send_caliper_event():
     if len(batch) != 0:
         send_event_batch(batch)
 
-def caliper_page_event(event):
+def get_caliper_event(event, event_type):
     nav_path = document_path = chapter_path = page = ""
     if event.get('div_id'):
         nav_path = event.get('div_id').split('/')
@@ -129,14 +129,25 @@ def caliper_page_event(event):
     actor = caliper.entities.Person(id=event.get('sid'))
     organization = caliper.entities.Organization(id=os.getenv("ORGANIZATION", "Umich"))
     edApp = caliper.entities.SoftwareApplication(id=event.get('course_id'))
+    the_event = None
 
-    the_event = caliper.events.NavigationEvent(
-        actor = actor,
-        edApp = edApp,
-        group = organization,
-        object = resource,
-        eventTime = event.get('timestamp').isoformat(),
-        action = "NavigatedTo"
+    if event_type == "NavigationEvent":
+        the_event = caliper.events.NavigationEvent(
+            actor = actor,
+            edApp = edApp,
+            group = organization,
+            object = resource,
+            eventTime = event.get('timestamp').isoformat(),
+            action = "NavigatedTo"
+            )
+    elif event_type == "ViewEvent":
+        the_event = caliper.events.ViewEvent(
+            actor = actor,
+            edApp = edApp,
+            group = organization,
+            object = resource,
+            eventTime = event.get('timestamp').isoformat(),
+            action = "Viewed"
         )
     return the_event
 
