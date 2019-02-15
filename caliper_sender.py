@@ -93,8 +93,8 @@ def send_caliper_event():
     # Loop through events and send events to caliper
     for event in events:
         if event.get('event'):
-            if event.get('event') == 'page':
-                caliper_event = get_caliper_event(event, "ViewEvent")
+            if event.get('event') == 'page' and event.get('act') == 'view':
+                caliper_event = get_caliper_event(event, "ViewEvent", "Viewed")
             batch.append(caliper_event)
             
         if len(batch) == batch_size:
@@ -104,24 +104,29 @@ def send_caliper_event():
     if len(batch) != 0:
         send_event_batch(batch)
 
-def get_caliper_event(event, event_type):
+def get_caliper_event(event, event_type, event_action):
     nav_path = document_path = chapter_path = page = ""
+    rsc = {}
     if event.get('div_id'):
         nav_path = event.get('div_id').split('/')
         document_path = '/'.join(nav_path[:4]) + '/'
         chapter_path = '/'.join(nav_path[:5]) + '/'
-        if (len(nav_path) == 4):
-            page = nav_path[5]
+        if len(nav_path) >= 3:
+            rsc['document'] = nav_path[3]
+        if len(nav_path) >= 4:
+            rsc['chapter'] = nav_path[4]
+        if len(nav_path) >= 5:
+            rsc['page'] = nav_path[5]
 
     resource = caliper.entities.Page(
                     id = '/'.join(nav_path),
-                    name = page,
+                    name = rsc.get('page'),
                     isPartOf = caliper.entities.Chapter(
                         id = chapter_path,
-                        name = event.get('chapter'),
+                        name = rsc.get('chapter'),
                         isPartOf = caliper.entities.Document(
                             id = document_path,
-                            name = event.get('document'),
+                            name = rsc.get('document'),
                         )
                     )
                 )
@@ -138,7 +143,7 @@ def get_caliper_event(event, event_type):
             group = organization,
             object = resource,
             eventTime = event.get('timestamp').isoformat(),
-            action = "NavigatedTo"
+            action = event_action
             )
     elif event_type == "ViewEvent":
         the_event = caliper.events.ViewEvent(
@@ -147,7 +152,7 @@ def get_caliper_event(event, event_type):
             group = organization,
             object = resource,
             eventTime = event.get('timestamp').isoformat(),
-            action = "Viewed"
+            action = event_action
         )
     return the_event
 
