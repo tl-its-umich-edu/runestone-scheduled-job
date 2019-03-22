@@ -234,6 +234,4 @@ def update_runtime_table(last_event_time):
     conn.commit()
 
 last_event_time = send_caliper_event()
-if last_event_time:
-    # If there are events sent between this job and the previous job, update runtime table with 
-    update_runtime_table(last_event_time)
+update_runtime_table(last_event_time)
