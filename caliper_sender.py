@@ -57,7 +57,7 @@ def get_last_runtime(cron_job):
             last_runtime = last_run[0].strftime('%Y-%m-%d %H:%M:%S')
         else: 
             # When there's no previous data in cron_run_info table, get a default timestamp from environment
-            last_runtime = os.getenv("FIRST_RUNTIME", '2019-02-01T19:53:23').replace('T', ' ')
+            last_runtime = os.getenv("FIRST_RUNTIME", '2019-01-01T00:00:00').replace('T', ' ')
 
     except Exception as err:
         logger.error(err)
@@ -111,11 +111,11 @@ def get_caliper_event(event, event_type, event_action):
         nav_path = event.get('div_id').split('/')
         document_path = '/'.join(nav_path[:4]) + '/'
         chapter_path = '/'.join(nav_path[:5]) + '/'
-        if len(nav_path) >= 3:
+        if len(nav_path) > 3:
             rsc['document'] = nav_path[3]
-        if len(nav_path) >= 4:
+        if len(nav_path) > 4:
             rsc['chapter'] = nav_path[4]
-        if len(nav_path) >= 5:
+        if len(nav_path) > 5:
             rsc['page'] = nav_path[5]
 
     resource = caliper.entities.Page(
@@ -132,8 +132,8 @@ def get_caliper_event(event, event_type, event_action):
                 )
 
     actor = caliper.entities.Person(id=event.get('sid'))
-    organization = caliper.entities.Organization(id=os.getenv("ORGANIZATION", "Umich"))
-    edApp = caliper.entities.SoftwareApplication(id=event.get('course_id'))
+    organization = caliper.entities.Organization(id=os.getenv("COURSE_ID", ""))
+    edApp = caliper.entities.SoftwareApplication(id=os.getenv('EDAPP_ID',""))
     the_event = None
 
     if event_type == "NavigationEvent":
