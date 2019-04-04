@@ -39,7 +39,9 @@ def create_runtime_table():
             (id SERIAL PRIMARY KEY,
             cron_job varchar(64) NOT NULL,
             last_run_time timestamp NOT NULL, 
-            last_run_status varchar(255) NOT NULL);""")
+            last_run_status varchar(255) NOT NULL,
+            last_sent_event_time timestamp NOT NULL)
+            ;""")
     except Exception as err:
         print(err)
 
@@ -64,32 +66,58 @@ def get_last_runtime(cron_job):
         last_runtime = None
     return last_runtime
 
-def fetch_events(last_runtime, events, acts):
-    # Fetch all events since last runtime
-    events = ["'" + event + "'" for event in events]
-    acts = ["'" + act + "'" for act in acts]
+def get_last_event_time(cron_job):
+    """
+    Return the last sent event timestamp from the previous job
+    """
+    try:
+        cur.execute("""
+        SELECT last_sent_event_time FROM cron_run_info 
+        WHERE cron_job = '{}'
+        ORDER BY last_sent_event_time DESC LIMIT 1 """.format(cron_job))
+        last_event = cur.fetchone()
+        if last_event:
+            last_event_time = last_event[0]
+        else: 
+            last_event_time = os.getenv("FIRST_EVENT_TIME", '2019-01-01T00:00:00').replace('T', ' ')
+
+    except Exception as err:
+        logger.error(err)
+        last_event_time = None
+    return last_event_time
+
+def fetch_events(last_event_time, target_events, target_acts):
+    """
+    Return all the events happened after the last_event_time
+    """
+    target_events = [f"'{event}'" for event in target_events]
+    target_acts = [f"'{act}'" for act in target_acts]
 
     cur.execute("""
     SELECT * FROM useinfo 
     WHERE useinfo.event IN ({events})
         AND useinfo.act IN ({acts})
-        AND useinfo.timestamp >= CAST('{last_runtime}' AS TIMESTAMP);""".format(events = ', '.join(events), acts = ', '.join(acts), last_runtime = last_runtime))
+        AND useinfo.timestamp > CAST('{last_event_time}' AS TIMESTAMP);""".format(events = ', '.join(target_events), acts = ', '.join(target_acts), last_event_time = last_event_time))
 
     events = cur.fetchall()
-    logger.info("Fetched {} events".format(len(events)))
+    logger.info(f"Fetched {len(events)} events")
     return events
 
 def send_caliper_event():
-    
     cron_job = 'test_cron'
-    last_runtime = get_last_runtime(cron_job)
+    last_event_time = get_last_event_time(cron_job)
     event_types = ['page']
     act_types = ['view']
     batch = []
     batch_size = os.getenv("BATCH_SIZE", 5)
+    events = fetch_events(last_event_time, event_types, act_types)
+    last_event_sent_time = last_event_time
 
-    events = fetch_events(last_runtime, event_types, act_types)
-    # print (events)
+    if len(events) != 0:
+        # Set last_event_sent_time to the lastest event time from all the fetched events
+        event_times = [event[1] for event in events]
+        last_event_sent_time = max(event_times)
+
     # Loop through events and send events to caliper
     for event in events:
         if event.get('event'):
@@ -103,9 +131,12 @@ def send_caliper_event():
             
     if len(batch) != 0:
         send_event_batch(batch)
+    # Return last event time
+    logger.info(f"The last event happened at {last_event_sent_time}")
+    return last_event_sent_time
 
 def get_caliper_event(event, event_type, event_action):
-    nav_path = document_path = chapter_path = page = ""
+    nav_path = document_path = chapter_path = ""
     rsc = {}
     if event.get('div_id'):
         nav_path = event.get('div_id').split('/')
@@ -188,18 +219,19 @@ def send_event_batch(batch):
     logger.info("event sent!")
 
 
-def update_runtime_table(): 
+def update_runtime_table(last_event_time): 
     # Insert now into the runtime table after sending event
     now = datetime.utcnow()
     event_time = now.strftime('%Y-%m-%d %H:%M:%S')
     cur.execute("""
-    INSERT INTO cron_run_info (cron_job, last_run_time, last_run_status) 
-    VALUES ('{cron_job}', '{last_run_time}', '{last_run_status}');
+    INSERT INTO cron_run_info (cron_job, last_run_time, last_run_status, last_sent_event_time) 
+    VALUES ('{cron_job}', '{last_run_time}', '{last_run_status}', '{last_sent_event_time}');
     """.format(
         cron_job = 'test_cron', 
         last_run_time = event_time,  
-        last_run_status = 'test_status'))
+        last_run_status = 'test_status',
+        last_sent_event_time = last_event_time))
     conn.commit()
 
-send_caliper_event()
-update_runtime_table()
+last_event_time = send_caliper_event()
+update_runtime_table(last_event_time)
