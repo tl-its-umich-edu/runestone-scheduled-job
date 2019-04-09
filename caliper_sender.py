@@ -117,7 +117,7 @@ def send_caliper_event():
         cron_status = "success"
     except:
         logger.exception("Cannot send event")
-        cron_status = "falure"
+        cron_status = "failure"
     return last_event_sent_time, cron_status
 
 def get_caliper_event(event, event_type, event_action):
