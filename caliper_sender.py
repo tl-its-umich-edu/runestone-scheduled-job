@@ -47,34 +47,15 @@ def create_runtime_table():
 
 create_runtime_table()
 
-def get_last_runtime(cron_job):
-    # Get last runtime
-    try:
-        cur.execute("""
-        SELECT last_run_time FROM cron_run_info 
-        WHERE cron_job = '{}'
-        ORDER BY last_run_time DESC LIMIT 1 """.format(cron_job))
-        last_run = cur.fetchone()
-        if last_run:
-            last_runtime = last_run[0].strftime('%Y-%m-%d %H:%M:%S')
-        else: 
-            # When there's no previous data in cron_run_info table, get a default timestamp from environment
-            last_runtime = os.getenv("FIRST_RUNTIME", '2019-01-01T00:00:00').replace('T', ' ')
-
-    except Exception as err:
-        logger.error(err)
-        last_runtime = None
-    return last_runtime
-
-def get_last_event_time(cron_job):
+def get_last_event_time(cron_job, cron_status):
     """
-    Return the last sent event timestamp from the previous job
+    Return the last successfully sent event timestamp from the previous job
     """
     try:
         cur.execute("""
         SELECT last_sent_event_time FROM cron_run_info 
-        WHERE cron_job = '{}'
-        ORDER BY last_sent_event_time DESC LIMIT 1 """.format(cron_job))
+        WHERE cron_job = '{cron_job}' AND last_run_status = '{cron_status}'
+        ORDER BY last_sent_event_time DESC LIMIT 1 """.format(cron_job = cron_job, cron_status = cron_status))
         last_event = cur.fetchone()
         if last_event:
             last_event_time = last_event[0]
@@ -83,7 +64,7 @@ def get_last_event_time(cron_job):
 
     except Exception as err:
         logger.error(err)
-        last_event_time = None
+        last_event_time = os.getenv("FIRST_EVENT_TIME", '2019-01-01T00:00:00').replace('T', ' ')
     return last_event_time
 
 def fetch_events(last_event_time, target_events, target_acts):
@@ -104,36 +85,40 @@ def fetch_events(last_event_time, target_events, target_acts):
     return events
 
 def send_caliper_event():
-    cron_job = 'test_cron'
-    last_event_time = get_last_event_time(cron_job)
+    cron_job = os.getenv('CRON_NAME', "runestone_caliper_job")
+    last_event_sent_time = get_last_event_time(cron_job, 'success')
     event_types = ['page']
     act_types = ['view']
     batch = []
     batch_size = os.getenv("BATCH_SIZE", 5)
-    events = fetch_events(last_event_time, event_types, act_types)
-    last_event_sent_time = last_event_time
+    cron_status = ""
+    try:
+        events = fetch_events(last_event_sent_time, event_types, act_types)
+        if len(events) != 0:
+            # Set last_event_sent_time to the lastest event time from all the fetched events
+            event_times = [event[1] for event in events]
+            last_event_sent_time = max(event_times)
 
-    if len(events) != 0:
-        # Set last_event_sent_time to the lastest event time from all the fetched events
-        event_times = [event[1] for event in events]
-        last_event_sent_time = max(event_times)
-
-    # Loop through events and send events to caliper
-    for event in events:
-        if event.get('event'):
-            if event.get('event') == 'page' and event.get('act') == 'view':
-                caliper_event = get_caliper_event(event, "ViewEvent", "Viewed")
-            batch.append(caliper_event)
-            
-        if len(batch) == batch_size:
+        # Loop through events and send events to caliper
+        for event in events:
+            if event.get('event'):
+                if event.get('event') == 'page' and event.get('act') == 'view':
+                    caliper_event = get_caliper_event(event, "ViewEvent", "Viewed")
+                batch.append(caliper_event)
+                
+            if len(batch) == batch_size:
+                send_event_batch(batch)
+                batch = []
+                
+        if len(batch) != 0:
             send_event_batch(batch)
-            batch = []
-            
-    if len(batch) != 0:
-        send_event_batch(batch)
-    # Return last event time
-    logger.info(f"The last event happened at {last_event_sent_time}")
-    return last_event_sent_time
+        # Return last event time
+        logger.info(f"The last event happened at {last_event_sent_time}")
+        cron_status = "success"
+    except:
+        logger.exception("Cannot send event")
+        cron_status = "failure"
+    return last_event_sent_time, cron_status
 
 def get_caliper_event(event, event_type, event_action):
     nav_path = document_path = chapter_path = ""
@@ -219,19 +204,20 @@ def send_event_batch(batch):
     logger.info("event sent!")
 
 
-def update_runtime_table(last_event_time): 
+def update_runtime_table(last_event_time, cron_status): 
     # Insert now into the runtime table after sending event
     now = datetime.utcnow()
     event_time = now.strftime('%Y-%m-%d %H:%M:%S')
+    cron_name = os.getenv('CRON_NAME', "runestone_caliper_job")
     cur.execute("""
     INSERT INTO cron_run_info (cron_job, last_run_time, last_run_status, last_sent_event_time) 
     VALUES ('{cron_job}', '{last_run_time}', '{last_run_status}', '{last_sent_event_time}');
     """.format(
-        cron_job = 'test_cron', 
+        cron_job = cron_name, 
         last_run_time = event_time,  
-        last_run_status = 'test_status',
+        last_run_status = cron_status,
         last_sent_event_time = last_event_time))
     conn.commit()
 
-last_event_time = send_caliper_event()
-update_runtime_table(last_event_time)
+last_event_time, cron_status = send_caliper_event()
+update_runtime_table(last_event_time, cron_status)
