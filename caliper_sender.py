@@ -1,3 +1,4 @@
+# -*- coding: future_fstrings -*-
 import caliper
 import psycopg2
 import psycopg2.extras
@@ -71,6 +72,12 @@ def fetch_events(last_event_time, target_events, target_acts):
     """
     Return all the events happened after the last_event_time
     """
+    if not target_events:
+        raise Exception("No target_events found/defined")
+
+    if not target_acts:
+        raise Exception("No target_acts found/defined")
+        
     target_events = [f"'{event}'" for event in target_events]
     target_acts = [f"'{act}'" for act in target_acts]
 
