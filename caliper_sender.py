@@ -208,7 +208,10 @@ def send_event_batch(batch):
     # logger.info(the_sensor.send(batch))
     logger.info (the_sensor.status_code)
     logger.info (the_sensor.debug) 
-    logger.info("event sent!")
+    if (the_sensor.status_code != 200):
+        raise Exception(f"Exception sending events code is {the_sensor.status_code}")
+        
+    logger.info("event batch completed successfully!")
 
 
 def update_runtime_table(last_event_time, cron_status): 
