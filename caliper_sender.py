@@ -21,12 +21,12 @@ dotenv = load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 logger.info("Connect to database...")
 conn = psycopg2.connect(
-    dbname = os.getenv("DB_NAME", "runestone"),
-    user = os.getenv("DB_USER", "runestone"),
-    password = os.getenv("DB_PASS", "runestone"),
-    host = os.getenv("DB_HOST", "localhost"),
-    port = os.getenv("DB_PORT", 5432),
-    )
+    dbname=os.getenv("DB_NAME", "runestone"),
+    user=os.getenv("DB_USER", "runestone"),
+    password=os.getenv("DB_PASS", "runestone"),
+    host=os.getenv("DB_HOST", "localhost"),
+    port=os.getenv("DB_PORT", 5432),
+)
 
 cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
@@ -47,7 +47,9 @@ def create_runtime_table():
     except Exception as err:
         print(err)
 
+
 create_runtime_table()
+
 
 def get_last_event_time(cron_job, cron_status):
     """
@@ -57,17 +59,18 @@ def get_last_event_time(cron_job, cron_status):
         cur.execute("""
         SELECT last_sent_event_time FROM cron_run_info 
         WHERE cron_job = '{cron_job}' AND last_run_status = '{cron_status}'
-        ORDER BY last_sent_event_time DESC LIMIT 1 """.format(cron_job = cron_job, cron_status = cron_status))
+        ORDER BY last_sent_event_time DESC LIMIT 1 """.format(cron_job=cron_job, cron_status=cron_status))
         last_event = cur.fetchone()
         if last_event:
             last_event_time = last_event[0]
-        else: 
+        else:
             last_event_time = os.getenv("FIRST_EVENT_TIME", '2019-01-01T00:00:00').replace('T', ' ')
 
     except Exception as err:
         logger.error(err)
         last_event_time = os.getenv("FIRST_EVENT_TIME", '2019-01-01T00:00:00').replace('T', ' ')
     return last_event_time
+
 
 def fetch_events(last_event_time, target_events, target_acts):
     """
@@ -78,7 +81,7 @@ def fetch_events(last_event_time, target_events, target_acts):
 
     if not target_acts:
         raise Exception("No target_acts found/defined")
-        
+
     target_events = [f"'{event}'" for event in target_events]
     target_acts = [f"'{act}'" for act in target_acts]
 
@@ -86,11 +89,12 @@ def fetch_events(last_event_time, target_events, target_acts):
     SELECT * FROM useinfo 
     WHERE useinfo.event IN ({events})
         AND useinfo.act IN ({acts})
-        AND useinfo.timestamp > CAST('{last_event_time}' AS TIMESTAMP);""".format(events = ', '.join(target_events), acts = ', '.join(target_acts), last_event_time = last_event_time))
+        AND useinfo.timestamp > CAST('{last_event_time}' AS TIMESTAMP);""".format(events=', '.join(target_events), acts=', '.join(target_acts), last_event_time=last_event_time))
 
     events = cur.fetchall()
     logger.info(f"Fetched {len(events)} events")
     return events
+
 
 def send_caliper_event():
     cron_job = os.getenv('CRON_NAME', "runestone_caliper_job")
@@ -113,11 +117,11 @@ def send_caliper_event():
                 if event.get('event') == 'page' and event.get('act') == 'view':
                     caliper_event = get_caliper_event(event, "ViewEvent", "Viewed")
                 batch.append(caliper_event)
-                
+
             if len(batch) == batch_size:
                 send_event_batch(batch)
                 batch = []
-                
+
         if len(batch) != 0:
             send_event_batch(batch)
         # Return last event time
@@ -127,6 +131,7 @@ def send_caliper_event():
         logger.exception("Cannot send event")
         cron_status = "failure"
     return last_event_sent_time, cron_status
+
 
 def get_caliper_event(event, event_type, event_action):
     nav_path = document_path = chapter_path = ""
@@ -143,17 +148,17 @@ def get_caliper_event(event, event_type, event_action):
             rsc['page'] = nav_path[5]
 
     resource = caliper.entities.Page(
-                    id = '/'.join(nav_path),
-                    name = rsc.get('page'),
-                    isPartOf = caliper.entities.Chapter(
-                        id = chapter_path,
-                        name = rsc.get('chapter'),
-                        isPartOf = caliper.entities.Document(
-                            id = document_path,
-                            name = rsc.get('document'),
-                        )
-                    )
-                )
+        id='/'.join(nav_path),
+        name=rsc.get('page'),
+        isPartOf=caliper.entities.Chapter(
+            id=chapter_path,
+            name=rsc.get('chapter'),
+            isPartOf=caliper.entities.Document(
+                id=document_path,
+                name=rsc.get('document'),
+            )
+        )
+    )
 
     actor = caliper.entities.Person(id=event.get('sid'))
     course_id = os.getenv("COURSE_ID")
@@ -167,37 +172,38 @@ def get_caliper_event(event, event_type, event_action):
     event_time = event.get('timestamp')
     if event_type == "NavigationEvent":
         the_event = caliper.events.NavigationEvent(
-            actor = actor,
-            edApp = edApp,
-            group = organization,
-            object = resource,
-            eventTime = event_time.strftime('%Y-%m-%dT%H:%M:%S') + event_time.strftime('.%f')[:4] + 'Z',
-            action = event_action
-            )
+            actor=actor,
+            edApp=edApp,
+            group=organization,
+            object=resource,
+            eventTime=event_time.strftime('%Y-%m-%dT%H:%M:%S') + event_time.strftime('.%f')[:4] + 'Z',
+            action=event_action
+        )
     elif event_type == "ViewEvent":
         the_event = caliper.events.ViewEvent(
-            actor = actor,
-            edApp = edApp,
-            group = organization,
-            object = resource,
-            eventTime = event_time.strftime('%Y-%m-%dT%H:%M:%S') + event_time.strftime('.%f')[:4] + 'Z',
-            action = event_action
+            actor=actor,
+            edApp=edApp,
+            group=organization,
+            object=resource,
+            eventTime=event_time.strftime('%Y-%m-%dT%H:%M:%S') + event_time.strftime('.%f')[:4] + 'Z',
+            action=event_action
         )
     return the_event
 
+
 def send_event_batch(batch):
     # Multiple LRW support: https://github.com/tl-its-umich-edu/python-caliper-tester
-    lrw_type = os.getenv('LRW_TYPE',"").lower()
-    token = os.getenv('LRW_TOKEN',"")
+    lrw_type = os.getenv('LRW_TYPE', "").lower()
+    token = os.getenv('LRW_TOKEN', "")
     lrw_server = os.getenv('LRW_SERVER', "")
 
     if lrw_type == 'unizin':
         lrw_endpoint = lrw_server
     elif lrw_type == 'ltitool':
-        lrw_endpoint = "{lrw_server}/caliper/event?key={token}".format(lrw_server = lrw_server, token = token)
+        lrw_endpoint = "{lrw_server}/caliper/event?key={token}".format(lrw_server=lrw_server, token=token)
     else:
-        sys.exit("LRW Type {lrw_type} not supported".format(lrw_type = lrw_type))
-    
+        sys.exit("LRW Type {lrw_type} not supported".format(lrw_type=lrw_type))
+
     the_config = caliper.HttpOptions(
         host="{0}".format(lrw_endpoint),
         auth_scheme='Bearer',
@@ -205,22 +211,22 @@ def send_event_batch(batch):
         debug=True)
 
     the_sensor = caliper.build_simple_sensor(
-            sensor_id = os.getenv("SENSOR_ID", "{0}/test_caliper".format(lrw_server)),
-            config_options = the_config )
-    
+        sensor_id=os.getenv("SENSOR_ID", "{0}/test_caliper".format(lrw_server)),
+        config_options=the_config)
+
     logger.info("Sending {} events".format(len(batch)))
     the_sensor.send(batch)
 
-    logger.info (the_sensor.status_code)
+    logger.info(the_sensor.status_code)
     if (the_sensor.status_code != 200):
         if (the_sensor.debug):
             logger.info(pformat(the_sensor.debug[0].content))
         raise Exception(f"Exception sending events code is {the_sensor.status_code}")
-        
+
     logger.info("event batch completed successfully!")
 
 
-def update_runtime_table(last_event_time, cron_status): 
+def update_runtime_table(last_event_time, cron_status):
     # Insert now into the runtime table after sending event
     now = datetime.utcnow()
     event_time = now.strftime('%Y-%m-%d %H:%M:%S')
@@ -229,11 +235,12 @@ def update_runtime_table(last_event_time, cron_status):
     INSERT INTO cron_run_info (cron_job, last_run_time, last_run_status, last_sent_event_time) 
     VALUES ('{cron_job}', '{last_run_time}', '{last_run_status}', '{last_sent_event_time}');
     """.format(
-        cron_job = cron_name, 
-        last_run_time = event_time,  
-        last_run_status = cron_status,
-        last_sent_event_time = last_event_time))
+        cron_job=cron_name,
+        last_run_time=event_time,
+        last_run_status=cron_status,
+        last_sent_event_time=last_event_time))
     conn.commit()
+
 
 last_event_time, cron_status = send_caliper_event()
 update_runtime_table(last_event_time, cron_status)
