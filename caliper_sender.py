@@ -156,8 +156,12 @@ def get_caliper_event(event, event_type, event_action):
                 )
 
     actor = caliper.entities.Person(id=event.get('sid'))
-    organization = caliper.entities.Organization(id=os.getenv("COURSE_ID", ""))
-    edApp = caliper.entities.SoftwareApplication(id=os.getenv('EDAPP_ID',""))
+    course_id = os.getenv("COURSE_ID")
+    edapp_id = os.getenv("EDAPP_ID")
+    if not course_id or not edapp_id:
+        raise Exception("You need to define both EDAPP_ID and COURSE_ID before using this.")
+    organization = caliper.entities.Organization(id=course_id)
+    edApp = caliper.entities.SoftwareApplication(id=edapp_id)
     the_event = None
 
     event_time = event.get('timestamp')
