@@ -8,6 +8,7 @@ from datetime import datetime, date, time
 import os
 from dotenv import load_dotenv
 import logging
+from pprint import pformat
 
 # Configuration is for OpenLRW, obtain bearer token
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -159,13 +160,14 @@ def get_caliper_event(event, event_type, event_action):
     edApp = caliper.entities.SoftwareApplication(id=os.getenv('EDAPP_ID',""))
     the_event = None
 
+    event_time = event.get('timestamp')
     if event_type == "NavigationEvent":
         the_event = caliper.events.NavigationEvent(
             actor = actor,
             edApp = edApp,
             group = organization,
             object = resource,
-            eventTime = event.get('timestamp').isoformat(),
+            eventTime = event_time.strftime('%Y-%m-%dT%H:%M:%S') + event_time.strftime('.%f')[:4] + 'Z',
             action = event_action
             )
     elif event_type == "ViewEvent":
@@ -174,7 +176,7 @@ def get_caliper_event(event, event_type, event_action):
             edApp = edApp,
             group = organization,
             object = resource,
-            eventTime = event.get('timestamp').isoformat(),
+            eventTime = event_time.strftime('%Y-%m-%dT%H:%M:%S') + event_time.strftime('.%f')[:4] + 'Z',
             action = event_action
         )
     return the_event
@@ -205,10 +207,10 @@ def send_event_batch(batch):
     logger.info("Sending {} events".format(len(batch)))
     the_sensor.send(batch)
 
-    # logger.info(the_sensor.send(batch))
     logger.info (the_sensor.status_code)
-    logger.info (the_sensor.debug) 
     if (the_sensor.status_code != 200):
+        if (the_sensor.debug):
+            logger.info(pformat(the_sensor.debug[0].content))
         raise Exception(f"Exception sending events code is {the_sensor.status_code}")
         
     logger.info("event batch completed successfully!")
