@@ -19,16 +19,24 @@ sys.path.insert(0, this_dir + "/..")
 
 dotenv = load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
-logger.info("Connect to database...")
-conn = psycopg2.connect(
-    dbname=os.getenv("DB_NAME", "runestone"),
-    user=os.getenv("DB_USER", "runestone"),
-    password=os.getenv("DB_PASS", "runestone"),
-    host=os.getenv("DB_HOST", "localhost"),
-    port=os.getenv("DB_PORT", 5432),
-)
+CUR = None
+CONN = None
 
-cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+def main():
+    global CONN, CUR
+    logger.info("Connect to database...")
+    CONN = psycopg2.connect(
+        dbname=os.getenv("DB_NAME", "runestone"),
+        user=os.getenv("DB_USER", "runestone"),
+        password=os.getenv("DB_PASS", "runestone"),
+        host=os.getenv("DB_HOST", "localhost"),
+        port=os.getenv("DB_PORT", 5432),
+    )
+    CUR = CONN.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    create_runtime_table()
+    last_event_time, cron_status = send_caliper_event()
+    update_runtime_table(last_event_time, cron_status)
 
 
 def create_runtime_table():
@@ -36,7 +44,7 @@ def create_runtime_table():
     Create cron_run_info table if not exists
     """
     try:
-        cur.execute("""
+        CUR.execute("""
         CREATE TABLE IF NOT EXISTS cron_run_info 
             (id SERIAL PRIMARY KEY,
             cron_job varchar(64) NOT NULL,
@@ -48,7 +56,6 @@ def create_runtime_table():
         print(err)
 
 
-create_runtime_table()
 
 
 def get_last_event_time(cron_job, cron_status):
@@ -56,11 +63,11 @@ def get_last_event_time(cron_job, cron_status):
     Return the last successfully sent event timestamp from the previous job
     """
     try:
-        cur.execute("""
+        CUR.execute("""
         SELECT last_sent_event_time FROM cron_run_info 
         WHERE cron_job = '{cron_job}' AND last_run_status = '{cron_status}'
         ORDER BY last_sent_event_time DESC LIMIT 1 """.format(cron_job=cron_job, cron_status=cron_status))
-        last_event = cur.fetchone()
+        last_event = CUR.fetchone()
         if last_event:
             last_event_time = last_event[0]
         else:
@@ -85,13 +92,13 @@ def fetch_events(last_event_time, target_events, target_acts):
     target_events = [f"'{event}'" for event in target_events]
     target_acts = [f"'{act}'" for act in target_acts]
 
-    cur.execute("""
+    CUR.execute("""
     SELECT * FROM useinfo 
     WHERE useinfo.event IN ({events})
         AND useinfo.act IN ({acts})
         AND useinfo.timestamp > CAST('{last_event_time}' AS TIMESTAMP);""".format(events=', '.join(target_events), acts=', '.join(target_acts), last_event_time=last_event_time))
 
-    events = cur.fetchall()
+    events = CUR.fetchall()
     logger.info(f"Fetched {len(events)} events")
     return events
 
@@ -116,7 +123,8 @@ def send_caliper_event():
             if event.get('event'):
                 if event.get('event') == 'page' and event.get('act') == 'view':
                     caliper_event = get_caliper_event(event, "ViewEvent", "Viewed")
-                batch.append(caliper_event)
+                if caliper_event:
+                    batch.append(caliper_event)
 
             if len(batch) == batch_size:
                 send_event_batch(batch)
@@ -134,39 +142,53 @@ def send_caliper_event():
 
 
 def get_caliper_event(event, event_type, event_action):
-    nav_path = document_path = chapter_path = ""
-    rsc = {}
-    if event.get('div_id'):
-        nav_path = event.get('div_id').split('/')
-        document_path = '/'.join(nav_path[:4]) + '/'
-        chapter_path = '/'.join(nav_path[:5]) + '/'
-        if len(nav_path) > 3:
-            rsc['document'] = nav_path[3]
-        if len(nav_path) > 4:
-            rsc['chapter'] = nav_path[4]
-        if len(nav_path) > 5:
-            rsc['page'] = nav_path[5]
+    # It's possible to not have chapters if it's a top level. This would result in -3 being 'published'
+    if not event.get('div_id'):
+        return None
+    nav_path = event.get('div_id').split('/')
+    if len(nav_path) < 3:
+        return None
 
-    resource = caliper.entities.Page(
-        id='/'.join(nav_path),
-        name=rsc.get('page'),
-        isPartOf=caliper.entities.Chapter(
-            id=chapter_path,
-            name=rsc.get('chapter'),
-            isPartOf=caliper.entities.Document(
-                id=document_path,
-                name=rsc.get('document'),
+    # Need to try to figure out the document/chapter/page from the div id
+    # If there's no scheme, add the file: scheme
+    if not nav_path[0]:
+        nav_path[0] = 'file:'
+    document_path = '/'.join(nav_path[:-2]) + '/'
+    chapter_path = '/'.join(nav_path[:-1]) + '/'
+
+    # On the index page there may not be a chapter, just the document. The only way I can seem to tell this is if the name is published
+    if 'published' == nav_path[-3]:
+        is_part_of = caliper.entities.Document(
+            id = document_path,
+            name = nav_path[-2],
+        )
+    # Otherwise the chapter is part of the document
+    else:
+        is_part_of = caliper.entities.Chapter(
+            id = chapter_path,
+            name = nav_path[-2],
+            isPartOf = caliper.entities.Document(
+                id = document_path,
+                name = nav_path[-3],
             )
         )
+
+    # Page is either part of chapter & document or just part of the document
+    resource = caliper.entities.Page(
+        id='/'.join(nav_path),
+        # Page name is always the last item
+        name= nav_path[-1],
     )
 
-    actor = caliper.entities.Person(id=event.get('sid'))
+    resource.isPartOf = is_part_of
+
+    actor = caliper.entities.Person(id="urn:actor_id:" + event.get('sid'))
     course_id = os.getenv("COURSE_ID")
     edapp_id = os.getenv("EDAPP_ID")
     if not course_id or not edapp_id:
         raise Exception("You need to define both EDAPP_ID and COURSE_ID before using this.")
-    organization = caliper.entities.Organization(id=course_id)
-    edApp = caliper.entities.SoftwareApplication(id=edapp_id)
+    organization = caliper.entities.Organization(id="urn:course_offering_id" + course_id)
+    edApp = caliper.entities.SoftwareApplication(id="url:edapp_id:" + edapp_id)
     the_event = None
 
     event_time = event.get('timestamp')
@@ -231,7 +253,7 @@ def update_runtime_table(last_event_time, cron_status):
     now = datetime.utcnow()
     event_time = now.strftime('%Y-%m-%d %H:%M:%S')
     cron_name = os.getenv('CRON_NAME', "runestone_caliper_job")
-    cur.execute("""
+    CUR.execute("""
     INSERT INTO cron_run_info (cron_job, last_run_time, last_run_status, last_sent_event_time) 
     VALUES ('{cron_job}', '{last_run_time}', '{last_run_status}', '{last_sent_event_time}');
     """.format(
@@ -239,8 +261,7 @@ def update_runtime_table(last_event_time, cron_status):
         last_run_time=event_time,
         last_run_status=cron_status,
         last_sent_event_time=last_event_time))
-    conn.commit()
+    CONN.commit()
 
-
-last_event_time, cron_status = send_caliper_event()
-update_runtime_table(last_event_time, cron_status)
+if __name__ == "__main__":
+    main()
