@@ -187,7 +187,7 @@ def get_caliper_event(event, event_type, event_action):
     edapp_id = os.getenv("EDAPP_ID")
     if not course_id or not edapp_id:
         raise Exception("You need to define both EDAPP_ID and COURSE_ID before using this.")
-    organization = caliper.entities.Organization(id="urn:course_offering_id" + course_id)
+    organization = caliper.entities.Organization(id="urn:course_offering_id:" + course_id)
     edApp = caliper.entities.SoftwareApplication(id="url:edapp_id:" + edapp_id)
     the_event = None
 
