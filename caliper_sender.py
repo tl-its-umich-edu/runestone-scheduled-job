@@ -145,6 +145,8 @@ def get_caliper_event(event, event_type, event_action):
     # It's possible to not have chapters if it's a top level. This would result in -3 being 'published'
     if not event.get('div_id'):
         return None
+    # This will split paths like /srv/web2py/applications/runestone/books/thinkcspy/published/thinkcspy/GeneralIntro/Algorithms.html
+    # See the unit test code in the tests directory for more examples
     nav_path = event.get('div_id').split('/')
     if len(nav_path) < 3:
         return None
