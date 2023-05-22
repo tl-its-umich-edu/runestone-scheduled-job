@@ -3,7 +3,7 @@ certifi==2022.12.7
 chardet==3.0.4
 python-decouple>=3.1,<3.99
 python-dotenv==0.10.1
-future==0.17.1
+future==0.18.3
 future-fstrings
 idna==2.8
 -e git+https://github.com/IMSGlobal/caliper-python.git@a8549ae7227cef896f222626ffd15c4ef4bf9edf#egg=imsglobal-caliper
